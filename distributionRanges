@@ -1,0 +1,71 @@
+# FUNCTIONS TO SIMULATE PHYLOGENETIC TREES AND ITS DISTRIBUTION RANGES 
+
+rm(list=ls(all=T))
+
+library(sampSurf)
+library(TreeSim)
+library(phytools)
+library(ape)
+library(raster)
+
+# FUNCTION 1
+
+##### newRangeSim: Function to generate the simulated distribution ranges
+##### This function simulate circular ranges using a uniform distribution 
+##### The simulated distribution ranges are generated with a random size and random position within of limits defined a priori
+##### The performance of function is rooted to simulationRangesTree function
+### Arguments:
+# @counter : | numeric | vector counts the number of distribution ranges generated in the simulationRangesTree function
+# @time : | numeric | cut-off point in time / time_i
+# @targetNew : | Numeric | lineage id in phylogenetic tree of new ranges / targetNewEdges
+# @axisUp : | numeric | upper limit of distribution (space limit). This will be used to generate an uniform distribution
+# @axisLow : | numeric | lower limit of distribution (space limit). This will be used to generate an uniform distribution
+# @clase : | character | ranges will be created are ("In") or not ("Out") in evaluated time
+# return: variable-length list containing 1) counter  2) polygon distribution range 3) data frame with distribution ranges data
+
+
+newRangeSim <- function(time, targetNew, counter, axisLow, axisUp, clase) 
+	{
+		data_newRangeSim <- list()
+		
+		## 'n' is the number of new distribution ranges will be generated. It could be generated one or two distribution ranges
+		
+		n <- nrow(targetNew)
+		
+		## the radius and position (x and y) will be selected from an uniform distributionn
+		
+		newRadius <- runif(n = 1, min = axisLow/4, max = axisUp/4)
+		if( length(newRadius) == 0 | newRadius == 0 ) { newRadius <- runif(n = 1, min = axisLow/2, max = axisUp/2) }
+		if( newRadius < 0 ) { newRadius <- newRadius * -1 }
+		centerX_int_track <- runif(n = 1, min = axisLow, max = axisUp) 
+    	centerY_int_track <- runif(n = 1, min = axisLow, max = axisUp)
+        range_int_track <- spCircle(radius = newRadius, centerPoint = c(x=centerX_int_track,y=centerY_int_track))
+        counter <- counter + 1
+        distDataTemp_track <- data.frame("time" = time, "class" = clase, "RangoID" = counter, "NameTree" = targetNew[1, 2], "Radius" = newRadius, "CenterX" = centerX_int_track , "CenterY" = centerY_int_track)
+
+        data_newRangeSim[[1]] <- counter
+        data_newRangeSim[[2]] <- range_int_track$spCircle
+        data_newRangeSim[[3]] <- distDataTemp_track
+      	
+        if( n == 2 )
+			{
+				## the radius and position (x and y) will be selected from an uniform distributionn
+		
+            	newRadius2 <- runif(n = 1, min = axisLow/4, max = axisUp/4)
+            	if( length(newRadius2) == 0 | newRadius2 == 0 ) { newRadius2 <- runif(n = 1, min = axisLow/2, max = axisUp/2) }
+				if( newRadius2 < 0 ) { newRadius2 <- newRadius2 * -1 }
+            	centerX_int_2 <- runif(n = 1, min = axisLow, max = axisUp) 
+            	centerY_int_2 <- runif(n = 1, min = axisLow, max = axisUp)
+            	counter <- counter + 1 
+            	range_int_2 <- spCircle(radius = newRadius2, centerPoint = c(x=centerX_int_2,y=centerY_int_2))
+            	distDataTemp2 <- data.frame("time" = time, "class" = clase, "RangoID" = counter, "NameTree" = targetNew[2,2], "Radius" = newRadius2, "CenterX" = centerX_int_2 , "CenterY" = centerY_int_2)
+            	data_newRangeSim[[4]] <- counter
+            	data_newRangeSim[[5]] <- range_int_2$spCircle
+            	data_newRangeSim[[6]] <- distDataTemp2     				
+			}	
+			
+		return (data_newRangeSim)
+		
+		### END ### 
+	
+	}
