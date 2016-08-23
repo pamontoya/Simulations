@@ -1,0 +1,38 @@
+
+# -- Args --
+# xmin: Numeric.
+# xmax: Numeric.
+# ymin: Numeric. 
+# ymax: Numeric. 
+# resolution: Numeric. Pixel size of new raster
+
+# -- Returns --
+# grid: raster
+
+makeGrid <- function(xmin, xmax, ymin, ymax, resolution)
+{
+	if(class(resolution) != "numeric") stop("'resolution' argument must be a numeric vector")
+	
+	if(length(resolution) != 1) 
+	{
+		message("Warning: Only the first element of 'resolution argument' will be used")
+		resolution <- resolution[1]
+	}
+	
+	c1 <- data.frame(x = xmin, y = ymin)
+	c2 <- data.frame(x = xmin, y = ymax)
+	c3 <- data.frame(x = xmax, y = ymax)
+	c4 <- data.frame(x = xmax, y = ymin)
+	c5 <- data.frame(x = xmin, y = ymin)
+
+	coords <- as.matrix(rbind(c1,c2,c3,c4,c5))
+
+	polygon <- Polygon(coords)
+	polygon <- Polygons(list(polygon), ID=1)
+	polygon <- SpatialPolygons(list(polygon))
+
+	grid <- raster(polygon, origin = ymin, res = resolution)
+	
+	return(grid)
+}
+
