@@ -1,0 +1,299 @@
+# -- Args --
+# simTest: object obtained from 'simulationRangesTree' function
+# time_contribution: time when the estimation want be counted
+# resolution: Numeric. The pixel size when the contribution of each evolutionary process will be estimated.
+# cLimits: Default TRUE. If "FALSE" is selected the user must to give a numeric vector with limits in "limits" argument. 
+# limits: Only if cLimits is "FALSE". This must be a numeric vector indicating spatial limits c(xmin, xmax, ymin, ymax)
+
+# -- Returns --
+# result: data frame object
+# If estimate == "all" data frame of 3 columns with information of speciation, extinction and immigration
+# Else, data frame of 1 column. Only returns the proccess selected (speciation, extincion or immigration)
+
+estEvolProc <- function(simTest, time_contribution, estimate="all", resolution, cLimits ="TRUE" , limits="NULL")
+{	
+	## 'data_simTest' is a data frame with distribution ranges data in time
+	data_simTest <- simTest[[1]]
+
+	## 'list_ranges' is a list with distribution ranges polygons
+	list_ranges <- simTest[[2]]
+
+	## 'tree_sim' is the simulated phylogenetic tree 
+	tree_sim <- simTest[[3]]
+
+
+	# -------------------- Spatial grid --------------------
+	
+	if(cLimits == TRUE)
+	{
+		if(limits != "NULL") message("Warning: Only the limits calculated by the function will be used")
+		x_max <- max(data_simTest$CenterX + data_simTest$Radius)
+		x_min <- min(data_simTest$CenterX - data_simTest$Radius)
+		y_max <- max(data_simTest$CenterY + data_simTest$Radius)
+		y_min <- min(data_simTest$CenterY - data_simTest$Radius)
+	}
+	
+	else
+	{
+		if(limits == "NULL") stop("The argument 'limits' is empty. A numeric vector indicating the limits in necessary")
+		if(length(limits) != 4) stop("In 'limits' must be a vector with 4 values")
+		if(class(limits) != "numeric") stop("'limits' argument must be a numeric vector")
+		x_min <- limits[1]
+		x_max <- limits[2]
+		y_min <- limits[3]
+		y_max <- limits[4]
+	}
+	
+	grid <- makeGrid(x_min, x_max, y_min, y_max, resolution)
+
+
+	result <- matrix(ncol=0, nrow=ncell(grid))
+
+	
+	# -------------------- Speciation --------------------
+
+	if(estimate == "spe" | estimate == "all" |  estimate == "inm")
+	{
+		parental_id <- unique(tree_sim$edge[,1])
+
+		## 'whichSpeciationContrib' will be a list with the species ID, for which speciation events contributed to species richness
+		## 'whichPixelContrib' will be a list with pixels per specie, where speciation events contributed to species richness
+		## These vectors are created to take account these events when the inmigration events are calculated
+
+		whichSpeciationContrib <- list()
+		whichPixelContrib <- list()
+
+		matrix_spe <- matrix( ncol = 0, nrow = ncell(grid) )	
+	
+		for(i in 1:length(parental_id))
+		{
+			par_id <- parental_id[i]
+			sister_id <- tree_sim$edge[which(tree_sim$edge[,1] == par_id),2]
+		
+			## All sister species and its position when they were originated are identified (time = "Node")
+		
+			matrix_time_spe <- matrix( ncol = 0, nrow = ncell(grid) )
+			for(j in 1:length(sister_id))
+			{
+				s <- sister_id[j]
+				ranges_s_id <- data_simTest[which(data_simTest$"NameTree" == s & data_simTest$class == "Node"),]
+				
+				## These species only count when they are orignated in time_contribution or later 
+				
+				if(ranges_s_id$"time" >= time_contribution)
+					{
+						poly_ranges <- list_ranges[[ranges_s_id$"RangoID"]]
+						poly_ranges_raster <- rasterize(poly_ranges,grid)
+						poly_ranges_raster_data <- as.data.frame(poly_ranges_raster)
+						matrix_time_spe <- cbind(matrix_time_spe, poly_ranges_raster_data)
+					}
+				else { next }
+			}
+		
+		## A matrix with presence data for both species is constructed. Only pixels where the sum = 2 (presence for both) will have one contribution event by speciation
+		
+			if( ncol(matrix_time_spe) > 0 )
+			{
+				matrix_time_spe[is.na(matrix_time_spe)] <- 0
+				w <- rowSums(matrix_time_spe, na.rm=T)
+				w <- which( w == 2 )
+				if( length(w) > 0 ) 
+					{
+						whichSpeciationContrib[[length(whichSpeciationContrib)+1]] <- sister_id
+						whichPixelContrib[[length(whichPixelContrib)+1]] <- w
+						mTemp <- matrix(ncol = 1, nrow = ncell(grid))
+						mTemp[w,1] <- 1
+						matrix_spe <- cbind( matrix_spe, mTemp )
+					}		
+			}
+		}
+	
+	## 'matrix_spe_final' is a vector with the sum of speciation events per pixel
+	matrix_spe_final <- rowSums(matrix_spe, na.rm=T)
+	
+		if(estimate == "spe" | estimate == "all")
+		{
+			result <- data.frame(cbind(result,matrix_spe_final))
+			names(result)[ncol(result)] <- "speciation"
+		}
+	
+	}
+	
+# -------------------- Extinction --------------------
+	
+	if(estimate == "ext" | estimate == "all")
+	{
+		data_time_i <- data_simTest[which(data_simTest$time > time_contribution & data_simTest$class == "In"),]
+		
+		cut_time <- unique(data_time_i$"time")
+
+		unique_ranges <- unique(data_time_i$"NameTree")
+		
+		matrix_ext <- matrix( ncol = 0, nrow = ncell(grid) )
+
+		for( i in 1:length(unique_ranges) )
+		{
+			## for each species is constructed a matrix with presence data for each time recorded from the time of interest
+		
+			range_eval <- unique_ranges[i]
+			datos_temp <- data_time_i[which(data_time_i$"NameTree"==range_eval),]
+			matrix_time_ext <- matrix( ncol = 0, nrow = ncell(grid) )
+		
+			## the time when the species was generated (time = "Node") is taken into account
+		
+			ranges_init_id <- data_simTest[which(data_simTest$"NameTree" == range_eval & data_simTest$class == "Node"),]
+			poly_ranges <- list_ranges[[ranges_init_id$"RangoID"]]
+			poly_ranges_raster <- rasterize(poly_ranges,grid)
+			poly_ranges_raster_data <- as.data.frame(poly_ranges_raster)
+			matrix_time_ext <- cbind(matrix_time_ext, poly_ranges_raster_data)
+		
+			for ( j in 1:length(cut_time) )
+			{
+				time_eval <- cut_time[j]
+				data_time_inRange <- datos_temp[which(datos_temp$"time"==time_eval),]
+				if( nrow(data_time_inRange) == 0 ) { poly_ranges_raster_data <- matrix(0, ncol = 1, nrow = ncell(grid)) }
+				if( nrow(data_time_inRange) > 0 )
+					{
+						poly_ranges <- list_ranges[[data_time_inRange$"RangoID"]]
+						poly_ranges_raster <- rasterize(poly_ranges,grid)
+						poly_ranges_raster_data <- as.data.frame(poly_ranges_raster)
+					}
+				matrix_time_ext <- cbind(matrix_time_ext, poly_ranges_raster_data)
+			}
+		
+			matrix_time_ext[is.na(matrix_time_ext)] <- 0
+		
+			matrix_ext_poly <- matrix(ncol = 0, nrow = ncell(grid))
+		
+			## Presences per pixel. To detect extinction events, the presences are compared from the most recent time to the previous time
+		
+			for ( j in ncol(matrix_time_ext):1 )
+			{	
+				if(j == 1 ) { break }
+				else
+				{
+					if(any(matrix_time_ext[,j] == 0 & matrix_time_ext[,j-1] == 1))
+						{
+							w <- which(matrix_time_ext[,j] == 0 & matrix_time_ext[,j-1] == 1)
+							mTemp <- matrix(ncol = 1, nrow = ncell(grid))
+							mTemp[w,1] <- 1
+							matrix_ext_poly <- cbind( matrix_ext_poly, mTemp )
+						}
+					else { next }
+				}
+			}
+		
+			sum_matrix_ext_poly <- rowSums(matrix_ext_poly, na.rm=T)
+			matrix_ext <- cbind( matrix_ext, sum_matrix_ext_poly)
+		}
+
+		## 'matrix_ext_final' is a vector with the number of extinction events (counting all species) per pixel
+		matrix_ext_final <- rowSums(matrix_ext)
+		
+		result <- data.frame(cbind(result,matrix_ext_final))
+		names(result)[ncol(result)] <- "extinction"
+		
+		}
+		
+		
+# -------------------- Immigration --------------------
+	
+	if(estimate == "imm" | estimate == "all")
+	{
+		data_time_i <- data_simTest[which(data_simTest$time > time_contribution & data_simTest$class == "In"),]
+		
+		cut_time <- unique(data_time_i$"time")
+
+		unique_ranges <- unique(data_time_i$"NameTree")
+		
+		matrix_inm <- matrix( ncol = 0, nrow = ncell(grid) )
+
+		for( i in 1:length(unique_ranges) )
+		{
+		## for each species is constructed a matrix with presence data for each time recorded from the time of interest
+		
+			range_eval <- unique_ranges[i]
+			datos_temp <- data_time_i[which(data_time_i$"NameTree"==range_eval),]
+			matrix_time_inm <- matrix( ncol = 0, nrow = ncell(grid) )
+		
+			## the time when the species was generated (time = "Node") is taken into account
+		
+			ranges_init_id <- data_simTest[which(data_simTest$"NameTree" == range_eval & data_simTest$class == "Node"),]
+			poly_ranges <- list_ranges[[ranges_init_id$"RangoID"]]
+			poly_ranges_raster <- rasterize(poly_ranges,grid)
+			poly_ranges_raster_data <- as.data.frame(poly_ranges_raster)
+			matrix_time_inm <- cbind(matrix_time_inm, poly_ranges_raster_data)
+		
+			for ( j in 1:length(cut_time) )
+				{
+					time_eval <- cut_time[j]
+					data_time_inRange <- datos_temp[which(datos_temp$"time"==time_eval),]
+					if( nrow(data_time_inRange) == 0 ) { poly_ranges_raster_data <- matrix(0, ncol = 1, nrow = ncell(grid)) }
+					if( nrow(data_time_inRange) > 0 )
+						{
+							poly_ranges <- list_ranges[[data_time_inRange$"RangoID"]]
+							poly_ranges_raster <- rasterize(poly_ranges,grid)
+							poly_ranges_raster_data <- as.data.frame(poly_ranges_raster)
+						}
+					matrix_time_inm <- cbind(matrix_time_inm, poly_ranges_raster_data)
+				}
+		
+	
+			matrix_time_inm[is.na(matrix_time_inm)] <- 0
+		
+			matrix_inm_poly <- matrix(ncol = 0, nrow = ncell(grid))
+		
+			## To detect immigration events, presences per pixel are compared from the time of interest to the next time
+		
+			for ( j in 2:ncol(matrix_time_inm) )
+				{	
+					if(j == ncol(matrix_time_inm) ) { break }
+					else
+					{
+						if(any(matrix_time_inm[,j] == 0 & matrix_time_inm[,j+1] == 1))
+							{
+								w <- which(matrix_time_inm[,j] == 0 & matrix_time_inm[,j+1] == 1)
+								mTemp <- matrix(ncol = 1, nrow = ncell(grid))
+								mTemp[w,1] <- 1
+								matrix_inm_poly <- cbind( matrix_inm_poly, mTemp )
+							}
+						else { next }
+					}
+				}
+			
+			sum_matrix_inm_poly <- rowSums(matrix_inm_poly, na.rm=T)
+		
+			## Since immigration events counted for a species when it is generated, only when not contribute speciation (both sister species are in a same pixel)
+			## these events of speciation are taken in account and removed of immigration events counting
+		
+			if(length(which(!is.na(unlist(lapply(whichSpeciationContrib,function(x){match(x,range_eval)})))))>0)
+				{
+					whichIndex <- c()
+					for(pr in 1:length(whichSpeciationContrib))
+						{
+							if(length(which(!is.na(match(whichSpeciationContrib[[pr]],range_eval))))>0)
+								{
+									whichIndex <- pr
+								}
+						}
+				
+					whichPixels <- whichPixelContrib[[whichIndex]]
+				
+					## For species for which speciation contributed, one immigration event was subtracted in those pixels where this contribution occurred 
+				
+					sum_matrix_inm_poly[whichPixels] <- sum_matrix_inm_poly[whichPixels] - 1
+				}
+			
+			matrix_inm <- cbind( matrix_inm, sum_matrix_inm_poly)
+		}
+	
+		## 'matrix_inm_final' is a vector with the number of immigration events (counting all species) per pixel		
+		matrix_inm_final <- rowSums(matrix_inm)
+
+		result <- data.frame(cbind(result,matrix_inm_final))
+		names(result)[ncol(result)] <- "immigration"
+
+	}
+	
+	return(result)	
+}
