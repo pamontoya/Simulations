@@ -1,0 +1,67 @@
+
+
+########## Calculating species i ##########
+# 'speciesi' is the current species richness per pixel
+
+# -- Args --
+# simTest: object obtained from 'simulationRangesTree' function
+# resolution: Numeric. The pixel size when the contribution of each evolutionary process will be estimated.
+# cLimits: Default TRUE. If "FALSE" is selected the user must to give a numeric vector with limits in "limits" argument. 
+# limits: Only if cLimits is "FALSE". This must be a numeric vector indicating spatial limits c(xmin, xmax, ymin, ymax)
+
+# -- Returns --
+# speciesi: numeric vector with extant species richness
+
+spRichnessExtant <- function(simTest, resolution, cLimits ="TRUE" , limits="NULL")
+{
+	## 'data_simTest' is a data frame with distribution ranges data in time
+	data_simTest <- simTest[[1]]
+
+	## 'list_ranges' is a list with distribution ranges polygons
+	list_ranges <- simTest[[2]]
+
+	## 'tree_sim' is the simulated phylogenetic tree 
+	tree_sim <- simTest[[3]]
+	
+	# -------------------- Spatial grid --------------------
+	
+	if(cLimits == TRUE)
+	{
+		if(limits != "NULL") message("Warning: Only the limits calculated by the function will be used")
+		x_max <- max(data_simTest$CenterX + data_simTest$Radius)
+		x_min <- min(data_simTest$CenterX - data_simTest$Radius)
+		y_max <- max(data_simTest$CenterY + data_simTest$Radius)
+		y_min <- min(data_simTest$CenterY - data_simTest$Radius)
+	}
+	
+	else
+	{
+		if(limits == "NULL") stop("The argument 'limits' is empty. A numeric vector indicating the limits in necessary")
+		if(length(limits) != 4) stop("In 'limits' must be a vector with 4 values")
+		if(class(limits) != "numeric") stop("'limits' argument must be a numeric vector")
+		x_min <- limits[1]
+		x_max <- limits[2]
+		y_min <- limits[3]
+		y_max <- limits[4]
+	}
+	
+	grid <- makeGrid(x_min, x_max, y_min, y_max, resolution)
+	
+	time_max <- max(data_simTest$time)
+
+	data_time_species_i <- data_simTest[which(data_simTest$time == time_max & data_simTest$class == "In"),]
+	matrix_species_i <- matrix( ncol = 0, nrow = ncell(grid) )
+
+	for( i in 1:nrow(data_time_species_i))
+		{
+			poly_ranges <- list_ranges[[data_time_species_i[i,"RangoID"]]]
+			poly_ranges_raster <- rasterize(poly_ranges,grid)
+			poly_ranges_raster_data <- as.data.frame(poly_ranges_raster)
+			matrix_species_i <- cbind(matrix_species_i, poly_ranges_raster_data)
+		}
+
+	speciesi  <- rowSums(matrix_species_i, na.rm=T)
+	
+	return(speciesi)
+
+}
