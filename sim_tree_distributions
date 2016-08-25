@@ -15,7 +15,7 @@ library(raster)
 ##### A priori, must be defined the time span and starting point in time
 ##### The function saves in a data frame the extant species and its distribuion ranges features (size and position) for each cut-off point in time
 ##### The performance of this function is rooted to newRangeSim function
-### ----- Arg -----:
+### Arguments:
 # @ ageTree : | numeric | age for simulation of phylogenetic tree
 # @ cut : | numeric | Two elements are required. The first element is the start point in time and second element is time span
 # @ speciationRate : | numeric | speciation rate / number between 0 and 1
@@ -27,72 +27,43 @@ library(raster)
 
 simulationRangesTree <- function(ageTree, cut, speciationRate, extinctionRate, axisLow, axisUp)
 	{
-  		distribRangesData <- matrix(ncol=6, nrow=10000)
-  		colnames(distribRangesData) <- c("time", "RangoID", "NameTree", "Radius", "CenterX", "CenterY")
+  		distribRangesData <- matrix(ncol=5, nrow=1)
+  		colnames(distribRangesData) <- c("time", "NameTree", "Radius", "x", "y")
   		Class <- character(10000)
   		ranges <- vector("list", 10000)
   		
-  		## 'count' is a vector that counts the number of distribution ranges generated. Every time that a range is generated, 'count' will increase one united. This will be the 'id' of each distribution range in a given time
-  		
-  		count <- 1
-  		id_tree <- sim.bd.age(age = ageTree, numbsim = 1, lambda = speciationRate, mu = extinctionRate, frac = 1, mrca = FALSE, complete = TRUE, K = 0)
+  		id_tree <- TreeSim::sim.bd.age(age = ageTree, numbsim = 1, lambda = speciationRate, mu = extinctionRate, frac = 1, mrca = FALSE, complete = TRUE, K = 0)
   		while( class(id_tree[[1]]) == "numeric" )
   		{
-  			id_tree <- sim.bd.age(age = ageTree, numbsim = 1, lambda = speciationRate, mu = extinctionRate, frac = 1, mrca = FALSE, complete = TRUE, K = 0)
+  			id_tree <- TreeSim::sim.bd.age(age = ageTree, numbsim = 1, lambda = speciationRate, mu = extinctionRate, frac = 1, mrca = FALSE, complete = TRUE, K = 0)
   		}
   		id_tree <- id_tree[[1]]
-  		H <- nodeHeights(id_tree)
+  		H <- phytools::nodeHeights(id_tree)
   		
   		## initial distribution range will be generated from an uniform distribution. The limits are defined for 'axisLow' and 'axisUp'
   		
-  		initial_x <-  runif(1, axisLow, axisUp)
-  		initial_y <- runif(1, axisLow, axisUp)
-  		initial_radius <- runif(1, axisLow, axisUp)
+  		initial_position <- runif(3, axisLow, axisUp)
+  		
+  		while( initial_position[1] == 0 )  initial_position[1] <- runif(n = 1, min = axisLow, max = axisUp)
   		
   		## In a data frame will be registered: 1. the distribution ranges features, and 2. the information about extant lineages, for each cut-off point in time.
   		## In this data frame, "class" attribute have two options: 
   		## "In" -> the lineage is within the evaluated time
   		## "Out" -> the lineage is out of evaluated time but it is generated for to create lineages distribution ranges of species extant at that time point (parental lineage)
   		
-  		distData <- c("time" = 0, "RangoID" = count, "NameTree" = unique(id_tree$edge[which(H[,1]==0.0000),1]), "Radius" = initial_radius, "CenterX" = initial_x, "CenterY" = initial_y)
+  		distData <- c("time" = 0, "NameTree" = unique(id_tree$edge[which(H[,1]==0.0000),1]), "Radius" = initial_position[1], "x" = initial_position[2], "y" = initial_position[3])
   		distribRangesData[1,] <- distData
   		Class[1] = "Initial"
   		
-  		id_ranges_initial <- spCircle(radius = initial_radius, centerPoint = c(x=initial_x,y=initial_y), spID = "initial_range")
+  		# index for distribRangesData		
   		
-  		## distribution ranges generated will be save in 'ranges' list. 'count' will be the position of each range in this list
-  		
-  		ranges[[count]] <- id_ranges_initial$spCircle
-  # index for distribRangesData		
-  		
-  		k <- 2
-  		
-  		for ( i in 1:nrow(H))
-  		{
-    			node <- t(as.matrix(id_tree$edge[i,]))
-    			age_node <- H[i,1]
-    		
-    			## to create new distribution ranges, the function newRangeSim will be used
-    				
-    			dRangesNodes <- newRangeSim(clase="Node", counter = count, time = age_node, targetNew = node, axisLow = axisLow, axisUp = axisUp)
-    			count <- dRangesNodes[[1]]
-    		
-    			if(count > length(ranges)) ranges <- c(ranges, vector("list", 10000))
-    		
-    			ranges[[count]] <- dRangesNodes[[2]]
-    		
-    			if(k > length(Class))
-				{
-    					distribRangesData <- rbind(distribRangesData, matrix(ncol=6, nrow=10000))
-    					Class <- c(Class, character(10000))	
-    				}
-    		
-    			distribRangesData[k,] <- as.numeric(dRangesNodes[[3]][-2])
-    			Class[k] <- as.character(dRangesNodes[[3]][2][1,])
-    			k <- k + 1
-  		}
-  		
+  		info.edge.H <- cbind(id_tree$edge, H)
+  		ranges_Nodes <- t(apply(info.edge.H, 1, function(x) gen.new.ranges(edge.length = x , axisLow = axisLow, axisUp = axisUp)))
+  		distribRangesData <- rbind(distribRangesData,ranges_Nodes)
+  		Class[2:(nrow(ranges_Nodes)+1)] <- "Node"
+  		k <- nrow(ranges_Nodes) + 2
   		cuts <- seq(from = cut[1] ,to = ageTree, by = cut[2])
+  		distribRangesData <- rbind(distribRangesData,matrix(ncol=5, nrow=10000))
   		
   		for(i in 1:length(cuts))
   		{
@@ -130,21 +101,23 @@ simulationRangesTree <- function(ageTree, cut, speciationRate, extinctionRate, a
 				
 			  	  	if(class(targetNewEdges)=="numeric") { targetNewEdges <- t(as.matrix(targetNewEdges)) }
 				    checker <- unique(targetNewEdges[,2])
+				    
+				    random_moves <- sample(x = c(1,1,2), size = length(checker))
 
 					for(j in 1:length(checker))
 				    	{
 				  	
-				        ind <- match(checker[j],distribRangesData[,"NameTree"])
+				        ind <- match_range(distribRangesData,j,checker)
 				        geoExtant <- distribRangesData[ind,]
 				        if( class(geoExtant) == "numeric" ) geoExtant <- geoExtant
 						if( class(geoExtant) != "numeric" ) geoExtant <- geoExtant[which(Class[ind]=="Node"),]
-					    	mov <- sample(x = c(1,1,2), size = 1)
+					    	mov <- random_moves[j]
 					    
 					    	if( mov == 1 ) ## no movement
 					    		{
 					    			
 					    			print("no movement")
-					    			data_geoExtant <- c("time" = time_i, "RangoID" = geoExtant[2], "NameTree" = geoExtant[3], "Radius" = geoExtant[4], "CenterX" = geoExtant[5], "CenterY" = geoExtant[6])
+					    			data_geoExtant <- c("time" = time_i,"NameTree" = geoExtant[2], "Radius" = geoExtant[3], "x" = geoExtant[4], "y" = geoExtant[5])
 					    					
     		                    if(k > length(Class))
     		                    		{
@@ -164,16 +137,11 @@ simulationRangesTree <- function(ageTree, cut, speciationRate, extinctionRate, a
 					    			
 					    			## the change of range position will be made follow a normal distribution
 					    		
-					    			newX_i <- rnorm(1, mean = 0, sd = sqrt(time_i-geoExtant[1]))
-					    			newX <- geoExtant[5] + newX_i
-					    			newY_i <- rnorm(1, mean = 0, sd = sqrt(time_i-geoExtant[1]))
-					    			newY <- geoExtant[6] + newY_i	
-					    			count <- count + 1
-					    			centerPoint <- c(newX, newY)
-					    			names(centerPoint) <- c("x","y")
-					    			newPoly <- spCircle(radius = geoExtant[4], centerPoint = centerPoint)
+					    			new_centerPoints <- rnorm(2, mean = 0, sd = sqrt(time_i-geoExtant[1]))
+					    			newX <- geoExtant[4] + new_centerPoints[1]
+					    			newY <- geoExtant[5] + new_centerPoints[2]			    		
 					    			
-					    			data_geoExtant <- c("time" = time_i, "RangoID" = count, "NameTree" = geoExtant[3], "Radius" = geoExtant[4], "CenterX" = newX, "CenterY" = newY)
+					    			data_geoExtant <- c("time" = time_i, "NameTree" = geoExtant[2], "Radius" = geoExtant[3], "x" = newX, "y" = newY)
 					    			
 					    			if(k > length(Class))
 					    				{
@@ -183,8 +151,6 @@ simulationRangesTree <- function(ageTree, cut, speciationRate, extinctionRate, a
     		                    		distribRangesData[k,] <- data_geoExtant
     		                    		Class[k] = "In"
     		                    		k <- k+1
-								if(count > length(range)) ranges <- c(ranges, vector("list", max(count, 1000)))	
-					    			ranges[[count]]<- newPoly$spCircle
 					    		}
 					    }
 			  	}
@@ -194,12 +160,10 @@ simulationRangesTree <- function(ageTree, cut, speciationRate, extinctionRate, a
 			  if(time_i == max(H)) { break }
 		}
 		
-		dataFinal <- data.frame(class=Class, distribRangesData)
-		dataFinal <- dataFinal[which(!is.na(dataFinal$time)),]
+		Class <- Class[-which(Class == "")]
+		distribRangesData <- distribRangesData[which(!is.na(distribRangesData[,1])),]
 		
-		ranges <- ranges[-(which(sapply(ranges,is.null),arr.ind=TRUE))]
-		
-		toReturn <- list(dataFinal,ranges,id_tree)
+		toReturn <- list(data.frame(class=Class, distribRangesData), id_tree)
 		return(toReturn)
 		
 		### END ###
