@@ -16,4 +16,5 @@ radius <- radius_bm(tree,sigma,min_rad=0.01,trend=0.01)
 full_data <-  x_traj %>%
   inner_join(y_traj,by=c("times","from","to")) %>%
   inner_join(radius,by=c("times","from","to")) %>%
-  arrange(times)
+  arrange(times) %>%
+  as.tbl()
