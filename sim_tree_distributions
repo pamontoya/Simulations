@@ -8,21 +8,57 @@ library(phytools)
 library(ape)
 library(raster)
 
-#FUNCTION 2
 
+# -- Args -- 
+# @ Ranges_data: distribRangesData
+# @ index: j
+# @ checker : checker
+
+# -- retunrs:
+# range_id: Numeric vector
+
+match_range <- function(Ranges_data,index,checker){
+	range_id <- match(checker[index], Ranges_data[,"NameTree"])
+	return(range_id)
+}
+
+# -- Args -- 
+# @ edge.length: | data frame, 4 columns | columns 1 and 2 are the edge information and columns 3 and 4 are the lenght branch
+# @ axisUp : | numeric | upper limit of distribution (space limit). This will be used to generate an uniform distribution
+# @ axisLow : | numeric | lower limit of distribution (space limit). This will be used to generate an uniform distribution
+
+# -- retunrs:
+# new.ranges.nodes: Numeric vector. Id lineage and new range information
+
+
+gen.new.ranges <- function(edge.length, axisLow, axisUp) {
+			new.ranges.nodes <- c()
+			node <- t(as.matrix(edge.length[1:2]))
+    			age_node <- edge.length[3]
+    		
+    			## to create new distribution ranges, the function newRangeSim will be used
+    				
+    			dRangesNodes <- newRangeSim(time = age_node, targetNew = node, axisLow = axisLow, axisUp = axisUp)
+    			new.ranges.nodes <- c(new.ranges.nodes, dRangesNodes[[1]])
+    			return(new.ranges.nodes)
+  		}
+                     		
+                     		
 ##### simulationRangesTree: Function to generate a phylogenetic tree and its distribution ranges
 ##### This function simulate a phylogenetic tree with diversification rates defined a priori, and identifies extant lineages and its ranges in several cut-off point in time
 ##### A priori, must be defined the time span and starting point in time
 ##### The function saves in a data frame the extant species and its distribuion ranges features (size and position) for each cut-off point in time
-##### The performance of this function is rooted to newRangeSim function
-### Arguments:
+
+# -- Args -- 
 # @ ageTree : | numeric | age for simulation of phylogenetic tree
 # @ cut : | numeric | Two elements are required. The first element is the start point in time and second element is time span
 # @ speciationRate : | numeric | speciation rate / number between 0 and 1
 # @ extinctionRate : | numeric | extinction rate / number between 0 and 1
 # @ axisUp : | numeric | upper limit of distribution (space limit). This will be used to generate an uniform distribution to create distribution ranges
 # @ axisLow : | numeric | lower limit of distribution (space limit). This will be used to generate an uniform distribution to create distribution ranges
-# return: variable-length list cointining 1) data frame with distribution ranges features for each cut-off point, 2) list of all ranges generated, 3) simulated phylogenetic tree
+
+# -- retunrs:
+# toReturn: list cointining 1) data frame with distribution ranges features for each cut-off point, 2) simulated phylogenetic tree
 
 
 simulationRangesTree <- function(ageTree, cut, speciationRate, extinctionRate, axisLow, axisUp)
@@ -169,3 +205,4 @@ simulationRangesTree <- function(ageTree, cut, speciationRate, extinctionRate, a
 		### END ###
 		
 	}	
+	
